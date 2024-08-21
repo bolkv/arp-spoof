@@ -1,8 +1,8 @@
 all: arp_spoofing
 
-arp_spoofing: main1.o mac.o ip.o ethhdr.o arphdr.o
-	g++ -o arp_spoofing main1.o mac.o ip.o ethhdr.o arphdr.o -lpcap
-main1.o: main1.cpp mac.h ip.h ethhdr.h arphdr.h	iphdr.h
+arp_spoofing: main.o mac.o ip.o ethhdr.o arphdr.o
+	g++ -o arp_spoofing main.o mac.o ip.o ethhdr.o arphdr.o -lpcap
+main.o: main.cpp mac.h ip.h ethhdr.h arphdr.h	iphdr.h
 	g++ -c -o main1.o main1.cpp
 
 mac.o: mac.cpp mac.h
