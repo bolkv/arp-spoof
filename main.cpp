@@ -160,13 +160,11 @@ void infect(pcap_t* pcap, Mac my_mac, Ip sender_ip, Mac sender_mac, Ip target_ip
 
 
 void handle_infection_and_relay(pcap_t* pcap, Mac my_mac, Ip sender_ip, Mac sender_mac, Ip target_ip, Mac target_mac) {
-    while (true) {
+    int res;
+    while ((res = pcap_next_ex(pcap, &header, &received_packet))>=0) {
+        if (res == 0) continue;
         struct pcap_pkthdr* header;
         const u_char* received_packet;
-
-        int res = pcap_next_ex(pcap, &header, &received_packet);
-        if (res == 0) continue;
-        if (res == -1 || res == -2) break;
 
         EthHdr* ethhdr = (EthHdr*)received_packet;
         Mac dmac = ethhdr->dmac_;
